@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Caro Online Multiplayer</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #f0f0f0; font-family: 'Arial', sans-serif; }
+        canvas { display: block; cursor: crosshair; }
+        #ui {
+            position: absolute; top: 10px; left: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px; border-radius: 8px; pointer-events: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        #overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); flex-direction: column;
+            justify-content: center; align-items: center; z-index: 10;
+        }
+        #status-text { font-size: 80px; font-weight: bold; color: white; text-shadow: 2px 2px 10px rgba(0,0,0,0.5); }
+        #sub-text { font-size: 30px; color: #ff4757; margin-top: 20px; }
+        button { margin-top: 30px; padding: 10px 25px; font-size: 20px; cursor: pointer; pointer-events: all; }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <b style="font-size: 1.2em;">Bạn là quân: <span id="your-role" style="color:#2ecc71">...</span></b><br>
+    <b style="font-size: 1.2em;">Lượt của: <span id="turn-display" style="color:#e74c3c">X</span></b><br><br>
+    - Con lăn: Zoom | Chuột phải: Di chuyển<br>
+    - Chuột trái: Đánh cờ
+</div>
+
+<div id="overlay">
+    <div id="status-text">VICTORY</div>
+    <div id="sub-text"></div>
+    <button onclick="requestReset()">Chơi lại</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+    const socket = io(); // KHỞI TẠO KẾT NỐI ONLINE
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const turnDisplay = document.getElementById('turn-display');
+    const roleDisplay = document.getElementById('your-role');
+    const overlay = document.getElementById('overlay');
+    const statusText = document.getElementById('status-text');
+    const subText = document.getElementById('sub-text');
+
+    let width, height;
+    let camera = { x: 0, y: 0, zoom: 1 };
+    const cellSize = 40;
+    let moves = []; 
+    let currentPlayer = 'X';
+    let myRole = ''; // Vai trò của máy này
+    let gameOver = false;
+    let winLine = null;
+
+    // 1. NHẬN VAI TRÒ TỪ SERVER
+    socket.on('assign-role', (role) => {
+        myRole = role;
+        roleDisplay.innerText = role;
+    });
+
+    function resize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function checkWin(x, y, player) {
+        const directions = [{dx:1,dy:0}, {dx:0,dy:1}, {dx:1,dy:1}, {dx:1,dy:-1}];
+        for (let d of directions) {
+            let count = 1;
+            let line = { x1: x, y1: y, x2: x, y2: y };
+            for (let i = 1; i < 5; i++) {
+                if (moves.find(m => m.x === x + d.dx * i && m.y === y + d.dy * i && m.player === player)) {
+                    count++; line.x2 = x + d.dx * i; line.y2 = y + d.dy * i;
+                } else break;
+            }
+            for (let i = 1; i < 5; i++) {
+                if (moves.find(m => m.x === x - d.dx * i && m.y === y - d.dy * i && m.player === player)) {
+                    count++; line.x1 = x - d.dx * i; line.y1 = y - d.dy * i;
+                } else break;
+            }
+            if (count >= 5) return line;
+        }
+        return null;
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, width, height);
+        ctx.save();
+        ctx.translate(width / 2, height / 2);
+        ctx.scale(camera.zoom, camera.zoom);
+        ctx.translate(-camera.x, -camera.y);
+
+        // Vẽ lưới
+        const startX = Math.floor((camera.x - width / 2 / camera.zoom) / cellSize);
+        const endX = Math.ceil((camera.x + width / 2 / camera.zoom) / cellSize);
+        const startY = Math.floor((camera.y - height / 2 / camera.zoom) / cellSize);
+        const endY = Math.ceil((camera.y + height / 2 / camera.zoom) / cellSize);
+
+        ctx.strokeStyle = "#ddd";
+        ctx.lineWidth = 1 / camera.zoom;
+        ctx.beginPath();
+        for (let x = startX; x <= endX; x++) { ctx.moveTo(x * cellSize, startY * cellSize); ctx.lineTo(x * cellSize, endY * cellSize); }
+        for (let y = startY; y <= endY; y++) { ctx.moveTo(startX * cellSize, y * cellSize); ctx.lineTo(endX * cellSize, y * cellSize); }
+        ctx.stroke();
+
+        moves.forEach(m => {
+            ctx.font = `bold ${cellSize * 0.7}px Arial`;
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillStyle = m.player === 'X' ? '#e74c3c' : '#2980b9';
+            ctx.fillText(m.player, m.x * cellSize + cellSize / 2, m.y * cellSize + cellSize / 2);
+        });
+
+        if (winLine) {
+            ctx.strokeStyle = "#2ecc71"; ctx.lineWidth = 5 / camera.zoom;
+            ctx.beginPath();
+            ctx.moveTo(winLine.x1 * cellSize + cellSize / 2, winLine.y1 * cellSize + cellSize / 2);
+            ctx.lineTo(winLine.x2 * cellSize + cellSize / 2, winLine.y2 * cellSize + cellSize / 2);
+            ctx.stroke();
+        }
+        ctx.restore();
+        requestAnimationFrame(draw);
+    }
+
+    canvas.addEventListener('click', e => {
+        if (gameOver) return;
+        // KIỂM TRA LƯỢT: Nếu không phải quân của mình thì không cho đánh
+        if (currentPlayer !== myRole) {
+            alert("Chưa đến lượt bạn!");
+            return;
+        }
+
+        const rect = canvas.getBoundingClientRect();
+        const worldX = (e.clientX - rect.left - width / 2) / camera.zoom + camera.x;
+        const worldY = (e.clientY - rect.top - height / 2) / camera.zoom + camera.y;
+        const cellX = Math.floor(worldX / cellSize);
+        const cellY = Math.floor(worldY / cellSize);
+
+        if (!moves.find(m => m.x === cellX && m.y === cellY)) {
+            // 2. GỬI NƯỚC ĐI LÊN SERVER CHỨ KHÔNG TỰ VẼ TRƯỚC
+            socket.emit('play-move', { x: cellX, y: cellY, player: myRole });
+        }
+    });
+
+    // 3. NHẬN NƯỚC ĐI TỪ SERVER VÀ CẬP NHẬT
+    socket.on('receive-move', (data) => {
+        moves.push(data);
+        const winResult = checkWin(data.x, data.y, data.player);
+        if (winResult) {
+            winLine = winResult;
+            showEndGame(data.player);
+        } else {
+            currentPlayer = data.player === 'X' ? 'O' : 'X';
+            turnDisplay.innerText = currentPlayer;
+            turnDisplay.style.color = currentPlayer === 'X' ? '#e74c3c' : '#2980b9';
+        }
+    });
+
+    function showEndGame(winner) {
+        gameOver = true;
+        overlay.style.display = 'flex';
+        statusText.innerText = winner === myRole ? "VICTORY" : "DEFEAT";
+        statusText.style.color = winner === myRole ? "#2ecc71" : "#e74c3c";
+        subText.innerText = `Người chơi ${winner === 'X' ? 'O' : 'X'} quá NGU!`;
+    }
+
+    function requestReset() { socket.emit('request-reset'); }
+
+    socket.on('reset-game', () => {
+        moves = []; winLine = null; gameOver = false;
+        currentPlayer = 'X'; turnDisplay.innerText = 'X';
+        overlay.style.display = 'none';
+    });
+
+    // Zoom & Pan
+    canvas.addEventListener('wheel', e => {
+        e.preventDefault();
+        if (e.deltaY < 0) camera.zoom *= 1.1; else camera.zoom /= 1.1;
+        camera.zoom = Math.min(Math.max(0.2, camera.zoom), 5);
+    }, { passive: false });
+
+    window.addEventListener('keydown', e => {
+        const step = 30 / camera.zoom;
+        if (e.key === 'ArrowUp') camera.y -= step;
+        if (e.key === 'ArrowDown') camera.y += step;
+        if (e.key === 'ArrowLeft') camera.x -= step;
+        if (e.key === 'ArrowRight') camera.x += step;
+    });
+
+    draw();
+</script>
+</body>
+</html>
