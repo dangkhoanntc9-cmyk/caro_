@@ -5,72 +5,331 @@
     <title>Caro Online Multiplayer</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #f0f0f0; font-family: 'Arial', sans-serif; }
-        canvas { display: block; cursor: crosshair; }
-        #ui {
-            position: absolute; top: 10px; left: 10px;
-            background: rgba(255, 255, 255, 0.9);
-            padding: 15px; border-radius: 8px; pointer-events: none;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        #overlay {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7); flex-direction: column;
-            justify-content: center; align-items: center; z-index: 10;
-        }
-        #status-text { font-size: 80px; font-weight: bold; color: white; text-shadow: 2px 2px 10px rgba(0,0,0,0.5); }
-        #sub-text { font-size: 30px; color: #ff4757; margin-top: 20px; }
-        button { margin-top: 30px; padding: 10px 25px; font-size: 20px; cursor: pointer; pointer-events: all; }
-    </style>
+       body { margin: 0; overflow: hidden; background: #f0f0f0; font-family: 'Arial', sans-serif; }
+        canvas { display: none; cursor: crosshair; } /* Ẩn canvas ban đầu */
+        
+  /* GIAO DIỆN SẢNH CHỜ */
+#lobby {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    /* Đảm bảo đường dẫn ảnh nền chính xác với file trong thư mục của bạn */
+    background: url('bg.png') no-repeat center center;
+    background-size: cover;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    z-index: 20;
+}
+
+/* Container: Đã xóa hiệu ứng kính mờ để hiển thị rõ background */
+.lobby-content {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 20px;
+    padding: 50px 70px; 
+}
+
+/* Tiêu đề CARO ONLINE */
+#lobby h1 {
+    font-size: 3.5em; 
+    color: white; 
+    margin: 0 0 15px 0;
+    /* Tăng cường đổ bóng viền đen để chữ nổi bật hẳn lên trên ảnh nền phức tạp */
+    text-shadow: 2px 2px 8px rgba(0,0,0,1), 0 0 15px rgba(0,0,0,0.8);
+    font-weight: bold;
+    letter-spacing: 2px;
+}
+
+/* Các nút và ô nhập liệu dạng chữ thuần (Xóa viền và nền) */
+.outlined-item {
+    background: transparent; /* Nền trong suốt hoàn toàn */
+    border: none; /* Xóa viền */
+    color: white;
+    padding: 15px 30px;
+    font-size: 1.3em; /* Tăng nhẹ size chữ cho dễ bấm */
+    cursor: pointer;
+    width: 320px;
+    text-align: center;
+    transition: all 0.2s ease;
+    outline: none;
+    font-weight: bold;
+    /* Đổ bóng chữ mạnh để dễ đọc */
+    text-shadow: 2px 2px 5px rgba(0,0,0,1), 0 0 10px rgba(0,0,0,0.6); 
+}
+
+/* Hiệu ứng khi di chuột vào nút */
+.outlined-item:hover, .outlined-item:focus {
+    background: transparent;
+    transform: scale(1.1); /* Phóng to chữ nhẹ lên thay vì dịch chuyển */
+    color: #ffde59; /* Đổi sang màu vàng nhẹ để user biết họ đang trỏ vào */
+    text-shadow: 2px 2px 5px rgba(0,0,0,1), 0 0 15px rgba(255, 222, 89, 0.5); /* Thêm ánh sáng glow */
+}
+
+/* Chữ gợi ý trong ô input */
+.outlined-item::placeholder {
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: bold;
+    text-shadow: 2px 2px 5px rgba(0,0,0,1);
+}
+
+/* Chữ HOẶC */
+.divider {
+    color: white;
+    font-weight: bold;
+    text-shadow: 2px 2px 5px rgba(0,0,0,1);
+    margin: 5px 0;
+    font-size: 1.1em;
+}
+     /* --- RESET CƠ BẢN --- */
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden; /* Ngăn cuộn trang web bên ngoài */
+    background-color: #111; /* Nền tối phòng khi màn hình quá rộng */
+    font-family: sans-serif;
+}
+
+/* --- XỬ LÝ KHUNG NỀN --- */
+#game-wrapper {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#frame-background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url('bbb.png'); /* Đảm bảo file bbb.png nằm cùng thư mục */
+    background-size: 100% 100%; /* Ép ảnh vừa khít toàn màn hình. Nếu ảnh bị méo, đổi thành 'cover' */
+    background-position: center;
+    background-repeat: no-repeat;
+    z-index: 1;
+}
+
+/* --- VÙNG CHỨA GAME (Khớp với tờ giấy trắng) --- */
+#game-board-container {
+    position: absolute;
+    /* BẠN CÓ THỂ TINH CHỈNH 4 THÔNG SỐ NÀY ĐỂ KHỚP HOÀN HẢO VỚI TỜ GIẤY */
+    top: 19%;      /* Khoảng cách từ trên xuống */
+    left: 31%;     /* Khoảng cách từ trái sang */
+    width: 38%;    /* Chiều rộng của tờ giấy */
+    height: 62%;   /* Chiều cao của tờ giấy */
+    
+    z-index: 2;
+    overflow: hidden; /* Rất quan trọng: Cắt bỏ các phần game (như map) tràn ra ngoài tờ giấy */
+    background-color: transparent; 
+}
+
+/* Vùng chứa bản đồ game thực tế (có thể dùng để pan/zoom) */
+#game-content {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    /* Thêm background lưới của bạn vào đây nếu cần */
+}
+
+/* --- GIAO DIỆN TRONG GAME --- */
+#ui {
+    display: none; 
+    position: absolute; 
+    /* Căn góc trên cùng bên trái của TOÀN BỘ TRÌNH DUYỆT */
+    top: 20px; 
+    left: 20px; 
+    
+    background: rgba(255, 255, 255, 0.95); 
+    padding: 15px; 
+    border-radius: 8px; 
+    pointer-events: auto; 
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3); 
+    z-index: 10; /* Đảm bảo luôn nổi lên trên cùng */
+}
+
+.room-badge {
+    background: #333; 
+    color: gold; 
+    padding: 4px 8px; 
+    border-radius: 4px; 
+    font-family: monospace; 
+    letter-spacing: 2px;
+}
+
+/* --- OVERLAY MÀN HÌNH CHỜ/KẾT THÚC (Từ code của bạn) --- */
+#overlay {
+    display: none; 
+    position: fixed; /* 'fixed' sẽ phủ toàn bộ màn hình trình duyệt */
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); 
+    flex-direction: column; 
+    justify-content: center; 
+    align-items: center; 
+    z-index: 10;
+}
+
+#status-text { 
+    font-size: 80px; 
+    font-weight: bold; 
+    color: white; 
+    text-shadow: 2px 2px 10px rgba(0,0,0,0.5); 
+}
+
+#sub-text { 
+    font-size: 30px; 
+    color: #ff4757; 
+    margin-top: 20px; 
+}
+
+#overlay button { 
+    margin-top: 30px; 
+    padding: 10px 25px; 
+    font-size: 20px; 
+    cursor: pointer; 
+    pointer-events: all; 
+    border-radius: 6px; 
+    border: none; 
+    background: #f1c40f; 
+    font-weight: bold; 
+}
+ </style>
 </head>
 <body>
 
-<div id="ui">
-    <b style="font-size: 1.2em;">Bạn là quân: <span id="your-role" style="color:#2ecc71">...</span></b><br>
-    <b style="font-size: 1.2em;">Lượt của: <span id="turn-display" style="color:#e74c3c">X</span></b><br><br>
-    - Con lăn: Zoom | Chuột phải: Di chuyển<br>
-    - Chuột trái: Đánh cờ
+<div id="lobby">
+    <div class="lobby-content">
+        <h1>CARO ONLINE</h1>
+        <div class="outlined-item" onclick="createRoom()">TẠO PHÒNG MỚI</div>
+        <div class="divider">HOẶC</div>
+        <input type="text" id="room-input" class="outlined-item" placeholder="NHẬP ID PHÒNG..." maxlength="6">
+        <div class="outlined-item" onclick="joinRoom()">VÀO PHÒNG</div>
+    </div>
 </div>
 
-<div id="overlay">
-    <div id="status-text">VICTORY</div>
-    <div id="sub-text"></div>
-    <button onclick="requestReset()">Chơi lại</button>
-</div>
+<div id="game-wrapper" style="display: none;"> 
+    <div id="frame-background"></div>
+    
+    <div id="ui" style="display: block;"> 
+        <b style="font-size: 1.2em;">Phòng: <span id="room-display" class="room-badge">...</span></b><br><br>
+        <b style="font-size: 1.2em;">Bạn là: <span id="your-role" style="color:#2ecc71">...</span></b><br>
+        <b style="font-size: 1.2em;">Lượt của: <span id="turn-display" style="color:#e74c3c">X</span></b><br><br>
+        - Con lăn: Zoom | Chuột phải: Di chuyển<br>
+        - Chuột trái: Đánh cờ
+    </div>
 
-<canvas id="gameCanvas"></canvas>
+    <div id="game-board-container">
+        <canvas id="gameCanvas" style="display: block; width: 100%; height: 100%;"></canvas>
+    </div>
+
+    <div id="overlay">
+        <div id="status-text">VICTORY</div>
+        <div id="sub-text"></div>
+        <button id="btn-reset" onclick="requestReset()">Chơi lại</button>
+    </div>
+</div>
 
 <script>
-    const socket = io(); // KHỞI TẠO KẾT NỐI ONLINE
+    const socket = io();
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
+    
+    // UI Elements
+    const lobby = document.getElementById('lobby');
+    const ui = document.getElementById('ui');
+    const roomInput = document.getElementById('room-input');
+    const roomDisplay = document.getElementById('room-display');
     const turnDisplay = document.getElementById('turn-display');
     const roleDisplay = document.getElementById('your-role');
     const overlay = document.getElementById('overlay');
     const statusText = document.getElementById('status-text');
     const subText = document.getElementById('sub-text');
+    const btnReset = document.getElementById('btn-reset');
 
     let width, height;
     let camera = { x: 0, y: 0, zoom: 1 };
     const cellSize = 40;
     let moves = []; 
     let currentPlayer = 'X';
-    let myRole = ''; // Vai trò của máy này
+    let myRole = ''; 
     let gameOver = false;
     let winLine = null;
 
-    // 1. NHẬN VAI TRÒ TỪ SERVER
+    // --- LOBBY LOGIC ---
+    function createRoom() {
+        socket.emit('create-room');
+    }
+
+    function joinRoom() {
+        const roomId = roomInput.value.trim();
+        if(roomId.length === 0) return alert("Vui lòng nhập ID phòng!");
+        socket.emit('join-room', roomId);
+    }
+
+   function startGameUI(roomId) {
+        lobby.style.display = 'none';
+        document.getElementById('game-wrapper').style.display = 'flex'; // Bật khung ảnh lên
+        roomDisplay.innerText = roomId;
+        
+        // Gọi resize ở đây phải dùng setTimeout nhẹ để DOM kịp render hiển thị, 
+        // nếu không width/height của container sẽ = 0
+        setTimeout(() => {
+            resize(); 
+            draw();
+        }, 50);
+    }
+
+    // --- SOCKET LISTENERS ---
+    socket.on('room-created', (roomId) => {
+        startGameUI(roomId);
+    });
+
+    socket.on('room-joined', (roomId) => {
+        startGameUI(roomId);
+    });
+
+    socket.on('error-message', (msg) => {
+        alert(msg);
+    });
+
     socket.on('assign-role', (role) => {
         myRole = role;
         roleDisplay.innerText = role;
+        roleDisplay.style.color = (role === 'Khán giả') ? '#95a5a6' : '#2ecc71';
+        
+        // Khán giả không được bấm chơi lại
+        if(role === 'Khán giả') btnReset.style.display = 'none';
     });
 
+    // Đồng bộ bàn cờ cho người/khán giả vào sau
+    socket.on('sync-board', (historyMoves) => {
+        moves = historyMoves;
+        if(moves.length > 0) {
+            // Xác định lượt tiếp theo dựa trên nước đi cuối
+            const lastPlayer = moves[moves.length - 1].player;
+            currentPlayer = lastPlayer === 'X' ? 'O' : 'X';
+            turnDisplay.innerText = currentPlayer;
+            turnDisplay.style.color = currentPlayer === 'X' ? '#e74c3c' : '#2980b9';
+            
+            // Kiểm tra xem ván cờ đã kết thúc trước khi vào chưa
+            const lastMove = moves[moves.length - 1];
+            const winResult = checkWin(lastMove.x, lastMove.y, lastMove.player);
+            if (winResult) {
+                winLine = winResult;
+                showEndGame(lastMove.player);
+            }
+        }
+    });
+
+    // --- CORE GAME LOGIC ---
     function resize() {
-        width = canvas.width = window.innerWidth;
-        height = canvas.height = window.innerHeight;
+        const container = document.getElementById('game-board-container');
+        if(!container) return;
+        
+        // Lấy kích thước thực tế của vùng tờ giấy trắng
+        width = canvas.width = container.clientWidth;
+        height = canvas.height = container.clientHeight;
     }
-    window.addEventListener('resize', resize);
-    resize();
 
     function checkWin(x, y, player) {
         const directions = [{dx:1,dy:0}, {dx:0,dy:1}, {dx:1,dy:1}, {dx:1,dy:-1}];
@@ -132,7 +391,13 @@
 
     canvas.addEventListener('click', e => {
         if (gameOver) return;
-        // KIỂM TRA LƯỢT: Nếu không phải quân của mình thì không cho đánh
+        
+        // CHẶN KHÁN GIẢ ĐÁNH CỜ
+        if (myRole === 'Khán giả') {
+            alert("Bạn đang ở chế độ xem, không thể đánh cờ!");
+            return;
+        }
+
         if (currentPlayer !== myRole) {
             alert("Chưa đến lượt bạn!");
             return;
@@ -145,12 +410,10 @@
         const cellY = Math.floor(worldY / cellSize);
 
         if (!moves.find(m => m.x === cellX && m.y === cellY)) {
-            // 2. GỬI NƯỚC ĐI LÊN SERVER CHỨ KHÔNG TỰ VẼ TRƯỚC
             socket.emit('play-move', { x: cellX, y: cellY, player: myRole });
         }
     });
 
-    // 3. NHẬN NƯỚC ĐI TỪ SERVER VÀ CẬP NHẬT
     socket.on('receive-move', (data) => {
         moves.push(data);
         const winResult = checkWin(data.x, data.y, data.player);
@@ -165,14 +428,25 @@
     });
 
     function showEndGame(winner) {
-        gameOver = true;
-        overlay.style.display = 'flex';
+    gameOver = true;
+    overlay.style.display = 'flex';
+    
+    // Câu này hiển thị ở tiêu đề to (VICTORY/DEFEAT hoặc Tên người thắng)
+    if(myRole === 'Khán giả') {
+        statusText.innerText = `NGƯỜI CHƠI ${winner} THẮNG`;
+        statusText.style.color = winner === 'X' ? '#e74c3c' : '#2980b9';
+    } else {
         statusText.innerText = winner === myRole ? "VICTORY" : "DEFEAT";
         statusText.style.color = winner === myRole ? "#2ecc71" : "#e74c3c";
-        subText.innerText = `Người chơi ${winner === 'X' ? 'O' : 'X'} quá NGU!`;
     }
 
-    function requestReset() { socket.emit('request-reset'); }
+    // Câu "cà khịa" huyền thoại của bạn ở đây:
+    subText.innerText = `Người chơi ${winner === 'X' ? 'O' : 'X'} quá NGU!`;
+}
+
+    function requestReset() { 
+        socket.emit('request-reset'); 
+    }
 
     socket.on('reset-game', () => {
         moves = []; winLine = null; gameOver = false;
@@ -194,8 +468,34 @@
         if (e.key === 'ArrowLeft') camera.x -= step;
         if (e.key === 'ArrowRight') camera.x += step;
     });
+// --- XỬ LÝ DI CHUYỂN CAMERA BẰNG CHUỘT PHẢI ---
+    let isDragging = false;
+    
+    canvas.addEventListener('mousedown', e => {
+        if (e.button === 2) { // 2 là chuột phải
+            isDragging = true;
+            canvas.style.cursor = 'grabbing';
+        }
+    });
 
-    draw();
+    window.addEventListener('mousemove', e => {
+        if (isDragging) {
+            // Dịch chuyển camera ngược chiều chuột
+            camera.x -= e.movementX / camera.zoom;
+            camera.y -= e.movementY / camera.zoom;
+        }
+    });
+
+    window.addEventListener('mouseup', e => {
+        if (e.button === 2) {
+            isDragging = false;
+            canvas.style.cursor = 'crosshair';
+        }
+    });
+
+    // Chặn menu mặc định hiện ra khi bấm chuột phải vào Canvas
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+
 </script>
 </body>
 </html>
